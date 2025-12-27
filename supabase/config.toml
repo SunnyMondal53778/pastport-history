@@ -1,0 +1,4 @@
+project_id = "jranmkygfkxvzzielmqf"
+
+[functions.analyze-monument]
+verify_jwt = false

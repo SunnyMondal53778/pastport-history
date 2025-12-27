@@ -5,25 +5,20 @@ import { MonumentResult } from "@/components/MonumentResult";
 import { Footer } from "@/components/Footer";
 import { useToast } from "@/hooks/use-toast";
 
-// Demo data for initial display before backend is connected
-const DEMO_MONUMENT = {
-  name: "The Colosseum",
-  location: "Rome, Italy",
-  era: "Ancient Roman Empire • 70-80 AD",
-  facts: [
-    "The Colosseum could hold between 50,000 to 80,000 spectators at its maximum capacity, making it the largest amphitheater ever built.",
-    "There was a complex underground system called the hypogeum with 80 vertical shafts to release wild animals and gladiators into the arena.",
-    "Naval battles (naumachiae) were staged in the Colosseum by flooding the arena with water up to 5 feet deep.",
-  ],
-  dangerRating: 2,
-  dangerNotes: "Generally safe for tourists. Watch for pickpockets in crowded areas.",
-  funFact: "The Colosseum was covered by a massive retractable awning called the 'velarium' to protect spectators from the sun, operated by 1,000 sailors!",
-};
+interface MonumentData {
+  name: string;
+  location: string;
+  era: string;
+  facts: string[];
+  dangerRating: number;
+  dangerNotes: string;
+  funFact: string;
+}
 
 export default function Index() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [monumentData, setMonumentData] = useState<typeof DEMO_MONUMENT | null>(null);
+  const [monumentData, setMonumentData] = useState<MonumentData | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -34,16 +29,48 @@ export default function Index() {
     setIsAnalyzing(true);
     setMonumentData(null);
 
-    // Simulate AI analysis (will be replaced with actual API call)
-    await new Promise((resolve) => setTimeout(resolve, 2500));
-    
-    setMonumentData(DEMO_MONUMENT);
-    setIsAnalyzing(false);
-    
-    toast({
-      title: "Monument Identified!",
-      description: `Discovered: ${DEMO_MONUMENT.name}`,
-    });
+    try {
+      // Call the AI analysis edge function
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-monument`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ imageBase64: preview }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Analysis failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.monument) {
+        setMonumentData(data.monument);
+        toast({
+          title: "Monument Identified!",
+          description: `Discovered: ${data.monument.name}`,
+        });
+      } else {
+        throw new Error("No monument data returned");
+      }
+    } catch (error) {
+      console.error("Analysis error:", error);
+      toast({
+        title: "Analysis Failed",
+        description: error instanceof Error ? error.message : "Could not analyze the image. Please try again.",
+        variant: "destructive",
+      });
+      setSelectedImage(null);
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handlePlayAudio = async () => {
@@ -54,11 +81,21 @@ export default function Index() {
       return;
     }
 
-    // For now, show a toast that audio will be enabled with backend
+    // For now, show a toast that audio will be enabled with ElevenLabs
     toast({
       title: "Audio Guide",
-      description: "Audio narration will be available when the backend is connected.",
+      description: "Audio narration coming soon! Stay tuned.",
     });
+  };
+
+  const handleReset = () => {
+    setMonumentData(null);
+    setSelectedImage(null);
+    setIsPlayingAudio(false);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
   };
 
   return (
@@ -86,10 +123,7 @@ export default function Index() {
         {monumentData && (
           <div className="text-center py-4">
             <button
-              onClick={() => {
-                setMonumentData(null);
-                setSelectedImage(null);
-              }}
+              onClick={handleReset}
               className="text-sm text-muted-foreground hover:text-gold transition-colors underline underline-offset-4"
             >
               ← Explore another monument
